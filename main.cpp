@@ -3,7 +3,7 @@
 #include <chrono>
 #include "vector"
 
-constexpr size_t N = 30'000'000;
+constexpr size_t N = 100'000'000;
 
 int main() {
     using clock = std::chrono::high_resolution_clock;
