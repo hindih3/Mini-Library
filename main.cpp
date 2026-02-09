@@ -3,18 +3,18 @@
 #include <chrono>
 #include "vector"
 
-constexpr size_t N = 100'000'000;
+constexpr size_t N = 50'000'000;
 
 int main() {
     using clock = std::chrono::high_resolution_clock;
 
     // std::vector test
     {
-        std::vector<int> v;
+        std::vector<std::string> v;
         auto start = clock::now();
 
         for (size_t i = 0; i < N; ++i)
-            v.push_back(i);
+            v.push_back("--------------------------------------------------");
 
         auto end = clock::now();
         std::chrono::duration<double> elapsed = end - start;
@@ -25,11 +25,11 @@ int main() {
 
     // mini::vector test
     {
-        mini::vector<int> v;
+        mini::vector<std::string> v;
         auto start = clock::now();
 
         for (size_t i = 0; i < N; ++i)
-            v.push_back(i);
+            v.push_back("--------------------------------------------------");
 
         auto end = clock::now();
         std::chrono::duration<double> elapsed = end - start;
