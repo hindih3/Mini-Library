@@ -55,7 +55,7 @@ namespace mini {
         class const_iterator {
         public:
             using iterator_category = std::random_access_iterator_tag;
-            using value_type = T;
+            using value_type = const T;
             using difference_type = std::ptrdiff_t;
             using pointer = const T*;
             using reference = const T&;
@@ -303,12 +303,17 @@ namespace mini {
             if (m_size >= m_capacity)
                 reserve(m_capacity == 0 ? 1 : m_capacity * growth_factor);
 
-            size_t i = m_size;
-            for (; i > index; --i) {
-                m_data[i] = std::move_if_noexcept(m_data[i - 1]);
+            if (index == m_size)
+                mini::construct<T>(m_data + m_size, value);
+            else {
+                mini::construct<T>(m_data + m_size, std::move_if_noexcept(m_data[m_size - 1]));
+
+                for (size_t i = m_size - 1; i > index; --i)
+                    m_data[i] = std::move_if_noexcept(m_data[i - 1]);
+
+                m_data[index] = value;
             }
-            
-            mini::construct<T>(m_data + index, value);
+
             ++m_size;
         }
 
@@ -319,10 +324,19 @@ namespace mini {
             if (m_size >= m_capacity)
                 reserve(m_capacity == 0 ? 1 : m_capacity * growth_factor);
 
-            m_data[m_size] = std::move_if_noexcept(m_data[m_size-1]);
-            for (size_t i = m_size-1; i > index; --i)
-                m_data[i] = std::move(m_data[i-1]);
-            mini::construct(m_data + index, std::move(value));
+            if (index == m_size) {
+                mini::construct<T>(m_data + m_size, std::move(value));
+            } else {
+                mini::construct<T>(
+                    m_data + m_size,
+                    std::move_if_noexcept(m_data[m_size - 1])
+                );
+
+                for (size_t i = m_size - 1; i > index; --i)
+                    m_data[i] = std::move_if_noexcept(m_data[i - 1]);
+
+                m_data[index] = std::move(value);
+            }
 
             ++m_size;
         }
@@ -336,6 +350,7 @@ namespace mini {
             *this = temp;
         }
     
+        //basic exception safety on erase
         void erase(size_t index) {
             if (index >= m_size)
                 throw std::out_of_range("Index out of range");
@@ -369,10 +384,6 @@ namespace mini {
             return m_data[index];
         }
 
-        void change_growth_factor(size_t n) {
-            growth_factor = n;
-        }
-
         size_t size() const noexcept { return m_size; }
         size_t capacity() const noexcept { return m_capacity; }
 
@@ -392,6 +403,6 @@ namespace mini {
         T* m_data;
         size_t m_size;
         size_t m_capacity;
-        size_t growth_factor = 2;
+        const size_t growth_factor = 2;
     };
 }

@@ -24,7 +24,7 @@ int main()
     start = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < N / 2; i++)
     {
-        s.erase(s.size() - 50);
+        s.erase(s.size() - 500);
     }
     end   = std::chrono::high_resolution_clock::now();
     elapsed = end - start;
