@@ -8,14 +8,25 @@ constexpr size_t N = 50'000'000;
 
 int main()
 {
-    int x[5] = {1, 2, 3, 4, 5};
-    int y[5];
-    memmove(y, x, sizeof(int) * 5);
-    x[2] = 0;
-    for (int i = 0; i < 5; i++)
+    mini::vector<int> v(10);
+    for (size_t i = 0; i < v.size(); i++)
     {
-        std::cout << x[i] << ' ' << y[i] << '\n';
+        v[i] = i;
     }
+
+    for (auto& i : v)
+    {
+        std::cout << i << ' ';
+    }
+    std::cout << '\n';
+    v.erase(0);
+
+    for (auto& i : v)
+    {
+        std::cout << i << ' ';
+    }
+    
+    
     
 }
 

@@ -1,13 +1,10 @@
-// Imitation of the STL vector, dynamic random-access array
-// First completed 12/30/25
-
-
 #pragma once
 #include <iterator>
 #include <cstddef>
 #include <stdexcept>
 #include <initializer_list>
 #include <utility>
+#include "memory.h"
 
 namespace mini {
 
@@ -55,6 +52,7 @@ namespace mini {
         private:
             T* m_ptr;
         };
+
         class const_iterator {
         public:
             using iterator_category = std::random_access_iterator_tag;
@@ -110,25 +108,33 @@ namespace mini {
             const T* m_ptr;
         };
 
-        explicit vector(size_t size = 0) : //default constructor
+        explicit vector(size_t size = 0) :
             m_capacity(size),
             m_size(size),
-            m_data(size == 0 ? nullptr : static_cast<T*>(::operator new(sizeof(T) * size)))
+            m_data(mini::allocate<T>(size))
         {
             for (size_t i = 0; i < size; ++i)
-                new (m_data + i) T();
+                mini::construct<T>(m_data + i);
         }
 
-        vector(const vector& other) : //copy constuctor
+        vector(const vector& other) :
             m_capacity(other.m_capacity),
             m_size(other.m_size),
-            m_data(other.m_capacity == 0 ? nullptr : static_cast<T*>(::operator new(sizeof(T) * other.m_capacity)))
+            m_data(mini::allocate<T>(other.m_capacity))
         {
-            for (size_t i = 0; i < other.m_size; ++i)
-                new (m_data + i) T(other.m_data[i]);
+            size_t i = 0;
+            try {
+                for (; i < other.m_size; ++i)
+                    mini::construct<T>(m_data + i, other.m_data[i]);
+            }
+            catch (...) {
+                mini::destroy<T>(m_data, m_data + i);
+                mini::deallocate<T>(m_data);
+                throw;
+            }
         }
 
-        vector(vector&& other) noexcept : // move constructor
+        vector(vector&& other) noexcept :
             m_data(other.m_data),
             m_size(other.m_size),
             m_capacity(other.m_capacity)
@@ -138,27 +144,25 @@ namespace mini {
             other.m_capacity = 0;
         }
 
-        vector& operator=(const vector& other) { // copy assignment operator
+        vector& operator=(const vector& other) {
             if (this == &other)
                 return *this;
 
-            T* new_data = other.m_capacity == 0 ? nullptr : static_cast<T*>(::operator new(sizeof(T) * other.m_capacity));
+            T* new_data = mini::allocate<T>(other.m_capacity);
 
             size_t i = 0;
             try {
                 for (; i < other.m_size; ++i)
-                    new (new_data + i) T(other.m_data[i]);
+                    mini::construct<T>(new_data + i, other.m_data[i]);
             }
             catch (...) {
-                for (size_t j = 0; j < i; ++j)
-                    new_data[j].~T();
-                ::operator delete(new_data);
+                mini::destroy<T>(new_data, new_data + i);
+                mini::deallocate<T>(new_data);
                 throw;
             }
 
-            for (i = 0; i < m_size; ++i)
-                m_data[i].~T();
-            ::operator delete(m_data);
+            mini::destroy<T>(m_data, m_data + m_size);
+            mini::deallocate<T>(m_data);
 
             m_data = new_data;
             m_size = other.m_size;
@@ -167,13 +171,12 @@ namespace mini {
             return *this;
         }
 
-        vector& operator=(vector&& other) noexcept { //move assignment operator
+        vector& operator=(vector&& other) noexcept {
             if (this == &other)
                 return *this;
 
-            for (size_t i = 0; i < m_size; ++i)
-                m_data[i].~T();
-            ::operator delete(m_data);
+            mini::destroy<T>(m_data, m_data + m_size);
+            mini::deallocate<T>(m_data);
 
             m_data = other.m_data;
             m_capacity = other.m_capacity;
@@ -187,50 +190,46 @@ namespace mini {
 
         vector(std::initializer_list<T> init) :
             m_capacity(init.size()), m_size(init.size()),
-            m_data(init.size() == 0 ? nullptr : static_cast<T*>(::operator new(sizeof(T) * init.size())))
+            m_data(mini::allocate<T>(init.size()))
         {
             size_t i = 0;
             try {
-                for (const T& value : init) {
-                    new (m_data + i) T(value);
+                for (auto&& value : init) {
+                    mini::construct<T>(m_data + i, value);
                     ++i;
                 }
             }
             catch (...) {
-                for (size_t j = 0; j < i; ++j)
-                    m_data[j].~T();
-                ::operator delete(m_data);
+                mini::destroy<T>(m_data, m_data + i);
+                mini::deallocate<T>(m_data);
                 throw;
             }
         }
 
-        ~vector() { //destructor
-            for (size_t i = 0; i < m_size; ++i)
-                m_data[i].~T();
-            ::operator delete(m_data);
+        ~vector() {
+            mini::destroy<T>(m_data, m_data + m_size);
+            mini::deallocate<T>(m_data);
         }
 
         void reserve(size_t new_capacity) {
             if (new_capacity <= m_capacity)
                 return;
 
-            T* new_data = static_cast<T*>(::operator new(sizeof(T) * new_capacity));
+            T* new_data = mini::allocate<T>(new_capacity);
 
             size_t i = 0;
             try {
                 for (; i < m_size; ++i)
-                    new (new_data + i) T(std::move_if_noexcept(m_data[i]));
+                    mini::construct<T>(new_data + i, std::move_if_noexcept(m_data[i]));
             }
             catch (...) {
-                for (size_t j = 0; j < i; ++j)
-                    new_data[j].~T();
-                ::operator delete(new_data);
+                mini::destroy<T>(new_data, new_data + i);
+                mini::deallocate<T>(new_data);
                 throw;
             }
 
-            for (i = 0; i < m_size; ++i) m_data[i].~T();
-            ::operator delete(m_data);
-
+            mini::destroy<T>(m_data, m_data + m_size);
+            mini::deallocate<T>(m_data);
             m_data = new_data;
             m_capacity = new_capacity;
         }
@@ -243,38 +242,34 @@ namespace mini {
                 size_t i = m_size;
                 try {
                     for (; i < new_size; ++i)
-                        new (m_data + i) T();
+                        mini::construct<T>(m_data + i);
                 }
                 catch (...) {
-                    for (size_t j = m_size; j < i; ++j) m_data[j].~T();
+                    mini::destroy<T>(m_data + m_size, m_data + i);
                     throw;
                 }
-            }
-
-            else {
-                for (size_t i = new_size; i < m_size; ++i)
-                    m_data[i].~T();
+            } else {
+                mini::destroy<T>(m_data + new_size, m_data + m_size);
             }
             m_size = new_size;
         }
 
         void shrink_to_fit() {
-            T* new_data = m_size == 0 ? nullptr : static_cast<T*>(::operator new(sizeof(T) * m_size));
+            T* new_data = mini::allocate<T>(m_size);
 
             size_t i = 0;
             try {
                 for (; i < m_size; ++i)
-                    new (new_data + i) T(std::move_if_noexcept(m_data[i]));
+                    mini::construct<T>(new_data + i, std::move_if_noexcept(m_data[i]));
             }
             catch (...) {
-                for (size_t j = 0; j < i; ++j)
-                    new_data[j].~T();
-                ::operator delete(new_data);
+                mini::destroy<T>(new_data, new_data + i);
+                mini::deallocate<T>(new_data);
                 throw;
             }
 
-            for (i = 0; i < m_size; ++i) m_data[i].~T();
-            ::operator delete(m_data);
+            mini::destroy<T>(m_data, m_data + m_size);
+            mini::deallocate<T>(m_data);
             m_data = new_data;
             m_capacity = m_size;
         }
@@ -283,7 +278,7 @@ namespace mini {
             if (m_size >= m_capacity)
                 reserve(m_capacity == 0 ? 1 : m_capacity * 2);
 
-            new (m_data + m_size) T(value);
+            mini::construct<T>(m_data + m_size, value);
             ++m_size;
         }
 
@@ -291,40 +286,36 @@ namespace mini {
             if (m_size >= m_capacity)
                 reserve(m_capacity == 0 ? 1 : m_capacity * 2);
 
-            new (m_data + m_size) T(std::move(value));
+            mini::construct<T>(m_data + m_size, std::move(value));
             ++m_size;
         }
 
         void pop_back() {
             if (m_size == 0)
                 throw std::out_of_range("Index out of range!");
-            m_size--;
-            m_data[m_size].~T();
+            --m_size;
+            mini::destroy<T>(m_data + m_size);
         }
-        
+
         void insert(size_t index, const T& value) {
             if (index > m_size)
                 throw std::out_of_range("Index out of range");
 
-            if (m_size >= m_capacity) {
-                size_t new_capacity = m_capacity == 0 ? 1 : m_capacity * 2;
-                reserve(new_capacity);
-            }
+            if (m_size >= m_capacity)
+                reserve(m_capacity == 0 ? 1 : m_capacity * 2);
 
             size_t i = m_size;
             try {
                 for (; i > index; --i) {
-                    new (m_data + i) T(std::move(m_data[i - 1]));
-                    m_data[i - 1].~T();
+                    mini::construct<T>(m_data + i, std::move(m_data[i - 1]));
+                    mini::destroy<T>(m_data + i - 1);
                 }
             }
             catch (...) {
-                for (size_t j = i; j < m_size; ++j)
-                    m_data[j].~T();
+                mini::destroy<T>(m_data + i, m_data + m_size);
                 throw;
             }
-
-            new (m_data + index) T(value);
+            mini::construct<T>(m_data + index, value);
             ++m_size;
         }
 
@@ -332,86 +323,74 @@ namespace mini {
             if (index > m_size)
                 throw std::out_of_range("Index out of range");
 
-            if (m_size >= m_capacity) {
-                size_t new_capacity = m_capacity == 0 ? 1 : m_capacity * 2;
-                reserve(new_capacity);
-            }
+            if (m_size >= m_capacity)
+                reserve(m_capacity == 0 ? 1 : m_capacity * 2);
 
             size_t i = m_size;
             try {
                 for (; i > index; --i) {
-                    new (m_data + i) T(std::move(m_data[i - 1]));
-                    m_data[i - 1].~T();
+                    mini::construct<T>(m_data + i, std::move(m_data[i - 1]));
+                    mini::destroy<T>(m_data + i - 1);
                 }
-
             }
             catch (...) {
-                for (size_t j = i; j < m_size; ++j)
-                    m_data[j].~T();
+                mini::destroy<T>(m_data + i, m_data + m_size);
                 throw;
             }
 
-            new (m_data + index) T(std::move(value));
+            mini::construct<T>(m_data + index, std::move(value));
             ++m_size;
         }
 
+        void safe_insert(size_t index, const T& value) {
+            if (index > m_size)
+                throw std::out_of_range("Index out of range");
+
+            vector temp(*this);
+            temp.insert(index, value);
+            *this = temp;
+        }
+
+        
         void erase(size_t index) {
             if (index >= m_size)
                 throw std::out_of_range("Index out of range");
-
-            m_data[index].~T();
-
-            size_t i = index;
-            try {
-                for (; i + 1 < m_size; ++i) {
+            
+            mini::destroy<T>(m_data + index);
+            
+            if (index + 1 < m_size) {
+                for (size_t i = index; i + 1 < m_size; ++i) {
                     new (m_data + i) T(std::move(m_data[i + 1]));
-                    m_data[i + 1].~T();
+                    mini::destroy<T>(m_data + i + 1);
                 }
             }
-            catch (...) {
-                for (size_t j = index; j < i; ++j)
-                    m_data[j].~T();
-                throw;
-            }
-
             --m_size;
         }
 
         void clear() {
-            for (size_t i = 0; i < m_size; ++i) {
-                m_data[i].~T();
-            }
-
+            mini::destroy<T>(m_data, m_data + m_size);
             m_size = 0;
         }
 
         bool empty() const noexcept { return m_size == 0; }
 
-        T& operator[](size_t index) noexcept {
-            return m_data[index];
-        }
-
-        const T& operator[](size_t index) const noexcept {
-            return m_data[index];
-        }
+        T& operator[](size_t index) noexcept { return m_data[index]; }
+        const T& operator[](size_t index) const noexcept { return m_data[index]; }
 
         T& at(size_t index) {
             if (index >= m_size)
                 throw std::out_of_range("Index out of range");
-
             return m_data[index];
         }
 
         const T& at(size_t index) const {
             if (index >= m_size)
                 throw std::out_of_range("Index out of range");
-
             return m_data[index];
         }
 
         size_t size() const noexcept { return m_size; }
         size_t capacity() const noexcept { return m_capacity; }
-
 
         iterator begin() noexcept { return iterator(m_data); }
         iterator end()   noexcept { return iterator(m_data + m_size); }
@@ -424,8 +403,8 @@ namespace mini {
 
         T* data() noexcept { return m_data; }
         const T* data() const noexcept { return m_data; }
-    private:
 
+    private:
         T* m_data;
         size_t m_size;
         size_t m_capacity;
