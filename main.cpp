@@ -4,30 +4,33 @@
 #include "vector"
 #include <cstring>
 
-constexpr size_t N = 50'000'000;
+constexpr size_t N = 5'000'000;
+using high_res_clock = std::chrono::high_resolution_clock;
 
 int main()
 {
-    mini::vector<int> v(10);
-    for (size_t i = 0; i < v.size(); i++)
-    {
-        v[i] = i;
-    }
+    mini::vector<std::string> s;
 
-    for (auto& i : v)
+    auto start = std::chrono::high_resolution_clock::now();
+    for (size_t i = 0; i < N; i++)
     {
-        std::cout << i << ' ';
+        s.push_back("A");
     }
-    std::cout << '\n';
-    v.erase(0);
+    auto end   = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
 
-    for (auto& i : v)
+    std::cout << "mini::vector push_back: " << elapsed.count() << " seconds\n";
+    
+    start = std::chrono::high_resolution_clock::now();
+    for (size_t i = 0; i < N / 2; i++)
     {
-        std::cout << i << ' ';
+        s.erase(s.size() - 50);
     }
-    
-    
-    
+    end   = std::chrono::high_resolution_clock::now();
+    elapsed = end - start;
+    std::cout << "mini::vector erase: " << elapsed.count() << " seconds\n";
+
+
 }
 
 /*
