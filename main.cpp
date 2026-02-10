@@ -2,11 +2,25 @@
 #include <vector>
 #include <chrono>
 #include "vector"
+#include <cstring>
 
 constexpr size_t N = 50'000'000;
 
-int main() {
-    using clock = std::chrono::high_resolution_clock;
+int main()
+{
+    int x[5] = {1, 2, 3, 4, 5};
+    int y[5];
+    memmove(y, x, sizeof(int) * 5);
+    x[2] = 0;
+    for (int i = 0; i < 5; i++)
+    {
+        std::cout << x[i] << ' ' << y[i] << '\n';
+    }
+    
+}
+
+/*
+using clock = std::chrono::high_resolution_clock;
 
     // std::vector test
     {
@@ -37,4 +51,4 @@ int main() {
         std::cout << "mini::vector push_back: "
                   << elapsed.count() << " seconds\n";
     }
-}
+                  */
