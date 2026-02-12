@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <initializer_list>
 #include <utility>
-#include "memory.h"
+#include "memory"
 
 namespace mini {
 
@@ -122,14 +122,19 @@ namespace mini {
             m_data(mini::allocate<T>(other.m_capacity))
         {
             size_t i = 0;
-            try {
-                for (; i < other.m_size; ++i)
-                    mini::construct<T>(m_data + i, other.m_data[i]);
-            }
-            catch (...) {
-                mini::destroy<T>(m_data, m_data + i);
-                mini::deallocate<T>(m_data);
-                throw;
+
+            if constexpr (std::is_trivially_copyable_v<T>)
+                std::memcpy(m_data, other.m_data, other.m_size * sizeof(T));
+            else {
+                try {
+                    for (; i < other.m_size; ++i)
+                        mini::construct<T>(m_data + i, other.m_data[i]);
+                }
+                catch (...) {
+                    mini::destroy<T>(m_data, m_data + i);
+                    mini::deallocate<T>(m_data);
+                    throw;
+                }
             }
         }
 
@@ -149,15 +154,20 @@ namespace mini {
 
             T* new_data = mini::allocate<T>(other.m_capacity);
 
-            size_t i = 0;
-            try {
-                for (; i < other.m_size; ++i)
-                    mini::construct<T>(new_data + i, other.m_data[i]);
-            }
-            catch (...) {
-                mini::destroy<T>(new_data, new_data + i);
-                mini::deallocate<T>(new_data);
-                throw;
+            if constexpr (std::is_trivially_copyable_v<T>)
+                std::memcpy(new_data, other.m_data, other.m_size * sizeof(T));
+            
+            else {
+                size_t i = 0;
+                try {
+                    for (; i < other.m_size; ++i)
+                        mini::construct<T>(new_data + i, other.m_data[i]);
+                }
+                catch (...) {
+                    mini::destroy<T>(new_data, new_data + i);
+                    mini::deallocate<T>(new_data);
+                    throw;
+                }
             }
 
             mini::destroy<T>(m_data, m_data + m_size);
@@ -217,17 +227,24 @@ namespace mini {
             T* new_data = mini::allocate<T>(new_capacity);
 
             size_t i = 0;
-            try {
-                for (; i < m_size; ++i)
-                    mini::construct<T>(new_data + i, std::move_if_noexcept(m_data[i]));
-            }
-            catch (...) {
-                mini::destroy<T>(new_data, new_data + i);
-                mini::deallocate<T>(new_data);
-                throw;
+
+            if constexpr (std::is_trivially_copyable_v<T>)
+                std::memcpy(new_data, m_data, m_size * sizeof(T));
+
+            else { 
+                try {
+                    for (; i < m_size; ++i) 
+                        mini::construct<T>(new_data + i, std::move_if_noexcept(m_data[i]));
+                }
+                catch (...) {
+                    mini::destroy<T>(new_data, new_data + i);
+                    mini::deallocate<T>(new_data);
+                    throw;
+                }
+
+                mini::destroy<T>(m_data, m_data + m_size);
             }
 
-            mini::destroy<T>(m_data, m_data + m_size);
             mini::deallocate<T>(m_data);
             m_data = new_data;
             m_capacity = new_capacity;
@@ -256,18 +273,25 @@ namespace mini {
         void shrink_to_fit() {
             T* new_data = mini::allocate<T>(m_size);
 
-            size_t i = 0;
-            try {
-                for (; i < m_size; ++i)
-                    mini::construct<T>(new_data + i, std::move_if_noexcept(m_data[i]));
+            if constexpr (std::is_trivially_copyable_v<T>) {
+                std::memcpy(new_data, m_data, m_size * sizeof(T));
             }
-            catch (...) {
-                mini::destroy<T>(new_data, new_data + i);
-                mini::deallocate<T>(new_data);
-                throw;
+            else {
+                size_t i = 0;
+                try {
+                    for (; i < m_size; ++i)
+                        mini::construct<T>(new_data + i,
+                                        std::move_if_noexcept(m_data[i]));
+                }
+                catch (...) {
+                    mini::destroy<T>(new_data, new_data + i);
+                    mini::deallocate<T>(new_data);
+                    throw;
+                }
+
+                mini::destroy<T>(m_data, m_data + m_size);
             }
 
-            mini::destroy<T>(m_data, m_data + m_size);
             mini::deallocate<T>(m_data);
             m_data = new_data;
             m_capacity = m_size;
@@ -303,15 +327,21 @@ namespace mini {
             if (m_size >= m_capacity)
                 reserve(m_capacity == 0 ? 1 : m_capacity * growth_factor);
 
-            if (index == m_size)
-                mini::construct<T>(m_data + m_size, value);
-            else {
-                mini::construct<T>(m_data + m_size, std::move_if_noexcept(m_data[m_size - 1]));
-
-                for (size_t i = m_size - 1; i > index; --i)
-                    m_data[i] = std::move_if_noexcept(m_data[i - 1]);
-
+            if constexpr (std::is_trivially_copyable_v<T>) {
+                if (index < m_size) {
+                    std::memmove(m_data + index + 1, m_data + index, (m_size - index) * sizeof(T));
+                }
                 m_data[index] = value;
+            } 
+            else {
+                if (index < m_size) {
+                    mini::construct<T>(m_data + m_size, std::move_if_noexcept(m_data[m_size - 1]));
+
+                    for (size_t i = m_size - 1; i > index; --i)
+                        m_data[i] = std::move_if_noexcept(m_data[i - 1]);
+                }
+
+                mini::construct<T>(m_data + index, value);
             }
 
             ++m_size;
@@ -324,20 +354,22 @@ namespace mini {
             if (m_size >= m_capacity)
                 reserve(m_capacity == 0 ? 1 : m_capacity * growth_factor);
 
-            if (index == m_size) {
-                mini::construct<T>(m_data + m_size, std::move(value));
-            } else {
-                mini::construct<T>(
-                    m_data + m_size,
-                    std::move_if_noexcept(m_data[m_size - 1])
-                );
-
-                for (size_t i = m_size - 1; i > index; --i)
-                    m_data[i] = std::move_if_noexcept(m_data[i - 1]);
-
+            if constexpr (std::is_trivially_copyable_v<T>) {
+                if (index < m_size) {
+                    std::memmove(m_data + index + 1, m_data + index, (m_size - index) * sizeof(T));
+                }
                 m_data[index] = std::move(value);
             }
+            else {
+                if (index < m_size) {
+                    mini::construct<T>(m_data + m_size, std::move_if_noexcept(m_data[m_size - 1]));
 
+                    for (size_t i = m_size - 1; i > index; --i)
+                        m_data[i] = std::move_if_noexcept(m_data[i - 1]);
+                }
+
+                mini::construct<T>(m_data + index, std::move(value));
+            }
             ++m_size;
         }
 
@@ -349,16 +381,20 @@ namespace mini {
             temp.insert(index, value);
             *this = temp;
         }
-    
-        //basic exception safety on erase
+
         void erase(size_t index) {
             if (index >= m_size)
                 throw std::out_of_range("Index out of range");
 
-            for (size_t i = index; i + 1 < m_size; ++i)
-                m_data[i] = std::move(m_data[i + 1]);
-
-            mini::destroy<T>(m_data + m_size - 1);
+            if constexpr (std::is_trivially_copyable_v<T>) {
+                if (index + 1 < m_size)
+                    std::memmove(m_data + index, m_data + index + 1, (m_size - index - 1) * sizeof(T));
+            } 
+            else {
+                for (size_t i = index; i + 1 < m_size; ++i)
+                    m_data[i] = std::move_if_noexcept(m_data[i + 1]);
+                mini::destroy<T>(m_data + m_size - 1);
+            }
             --m_size;
         }
 
@@ -403,6 +439,6 @@ namespace mini {
         T* m_data;
         size_t m_size;
         size_t m_capacity;
-        constexpr size_t growth_factor = 2;
+        constexpr static size_t growth_factor = 2;
     };
 }
