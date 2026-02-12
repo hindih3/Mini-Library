@@ -55,7 +55,7 @@ namespace mini {
         class const_iterator {
         public:
             using iterator_category = std::random_access_iterator_tag;
-            using value_type = const T;
+            using value_type = T;
             using difference_type = std::ptrdiff_t;
             using pointer = const T*;
             using reference = const T&;
@@ -403,6 +403,6 @@ namespace mini {
         T* m_data;
         size_t m_size;
         size_t m_capacity;
-        const size_t growth_factor = 2;
+        constexpr size_t growth_factor = 2;
     };
 }
