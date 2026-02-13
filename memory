@@ -11,7 +11,7 @@ T* allocate(size_t n) {
 
 template <class T>
 void deallocate(T* ptr) noexcept {
-    ::operator delete(ptr);
+    ::operator delete(ptr, sizeof(T));
 }
 
 template <class T>
