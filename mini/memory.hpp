@@ -1,7 +1,6 @@
 #pragma once
 #include <cstring>
 #include <type_traits>
-#include <utility>
 namespace mini {
     
 template <class T>
@@ -11,7 +10,7 @@ T* allocate(size_t n) {
 
 template <class T>
 void deallocate(T* ptr) noexcept {
-    ::operator delete(ptr, sizeof(T));
+    ::operator delete(ptr);
 }
 
 template <class T>
