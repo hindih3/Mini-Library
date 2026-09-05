@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <initializer_list>
 #include <utility>
+#include <cstring>
 
 #include "memory.hpp"
 
@@ -405,7 +406,7 @@ public:
         m_size = 0;
     }
 
-    bool empty() const noexcept { return m_size == 0; }
+    [[nodiscard]] bool empty() const noexcept { return m_size == 0; }
 
     T& operator[](size_t index) noexcept { return m_data[index]; }
     const T& operator[](size_t index) const noexcept { return m_data[index]; }
@@ -422,8 +423,8 @@ public:
         return m_data[index];
     }
 
-    size_t size() const noexcept { return m_size; }
-    size_t capacity() const noexcept { return m_capacity; }
+    [[nodiscard]] size_t size() const noexcept { return m_size; }
+    [[nodiscard]] size_t capacity() const noexcept { return m_capacity; }
 
     iterator begin() noexcept { return iterator(m_data); }
     iterator end()   noexcept { return iterator(m_data + m_size); }

@@ -1,6 +1,6 @@
 #pragma once
-#include <cstring>
 #include <type_traits>
+
 namespace mini {
     
 template <class T>
@@ -13,14 +13,9 @@ void deallocate(T* ptr) noexcept {
     ::operator delete(ptr);
 }
 
-template <class T>
-void construct(T* ptr) {
-    new(ptr) T();
-}
-
-template <class T>
-void construct(T* ptr, T value) {
-    new(ptr) T(value);
+template <class T, class... Args>
+void construct(T* ptr, Args&&... args) {
+    ::new (static_cast<void*>(ptr)) T(std::forward<Args>(args)...);
 }
 
 template <typename T>
