@@ -2,7 +2,7 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 
-CSV_PATH = Path(__file__).parent / "results_fine_4M-8M.csv"
+CSV_PATH = Path(__file__).parent / "results.csv"
 
 with open(CSV_PATH) as f:
     lines = f.readlines()
