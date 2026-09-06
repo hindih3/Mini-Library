@@ -1,3 +1,15 @@
-#ignore all .txt files
-*.txt
-*.exe
+build/
+build-bench/
+cmake-build-*/
+
+.venv/
+benchmarks/.venv/
+__pycache__/
+*.pyc
+
+.idea/
+.vscode/
+EOF
+
+benchmarks/graphs/
+benchmarks/old-logs/

@@ -223,7 +223,7 @@ public:
         mini::deallocate<T>(m_data);
     }
 
-    void reserve(size_t new_capacity) {
+    void reserve(const size_t new_capacity) {
         if (new_capacity <= m_capacity)
             return;
 
