@@ -300,6 +300,15 @@ public:
         m_capacity = m_size;
     }
 
+    template <class... Args>
+    void emplace_back(Args&&... args) {
+        if (m_size >= m_capacity)
+            reserve(m_capacity == 0 ? 1 : m_capacity * growth_factor);
+
+        mini::construct<T>(m_data + m_size, std::forward<Args>(args)...);
+        ++m_size;
+    }
+
     void push_back(const T& value) {
         if (m_size >= m_capacity)
             reserve(m_capacity == 0 ? 1 : m_capacity * growth_factor);
