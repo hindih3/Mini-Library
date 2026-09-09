@@ -18,8 +18,9 @@ Repo is header-only, no runtime dependencies.
   constructor mid-reallocation destroys the partially built buffer and rethrows,
   leaving the original vector untouched.
 - **Perfect-forwarding construction.** `construct` forwards its arguments, so
-  reallocation moves (rather than copies) and move-only types such as
-  `std::unique_ptr` are supported.
+  reallocation moves (rather than copies) instead, `emplace_back` constructs
+  elements in place from arbitrary constructor arguments, and move-only types
+  such as `std::unique_ptr` are supported.
 - **Full random-access `iterator` / `const_iterator`,** usable with `<algorithm>`.
 
 ## Usage
@@ -33,6 +34,7 @@ Add the include root and include the header:
 
 mini::vector<int> v{1, 2, 3};
 v.push_back(4);
+v.emplace_back(5);
 ```
 
 ## Testing
@@ -41,13 +43,23 @@ v.push_back(4);
 
 Run the suite under AddressSanitizer + UBSan:
 
-    cmake -B build -DMINI_SANITIZE=ON && cmake --build build && ctest --test-dir build
+    cmake -B build -DMINI_SANITIZE=ON -DCMAKE_BUILD_TYPE=Debug && cmake --build build && ctest --test-dir build
+
+The sanitize build uses `Debug` (not `Release`) deliberately: `NDEBUG` would
+strip the `assert`s the correctness tests rely on, and ASan/UBSan give better
+diagnostics at low optimization. Some tests use an instrumented element type
+that counts its own copy/move/construct calls, letting them assert the *exact*
+number of operations — e.g. that `emplace_back(args...)` constructs in place
+with zero copies and zero moves, that `push_back(std::move(x))` performs exactly
+one move, and that growth reallocation moves existing elements rather than
+copying them.
 
 ## Benchmarks
 
 Benchmarked against `libstdc++`'s `std::vector` with
-[Google Benchmark](https://github.com/google/benchmark), measuring `push_back`
-throughput for `int` across a range of sizes, with and without `reserve`.
+[Google Benchmark](https://github.com/google/benchmark). Two separate studies:
+`push_back` throughput for `int` (with and without `reserve`), and
+`push_back` vs `emplace_back` for non-trivial element types.
 
 **Method.** GCC 13.3, `-O2 -DNDEBUG`, CPU pinned to one core (`taskset`) with
 turbo disabled and the `performance` governor forced on all cores, 10
@@ -55,10 +67,12 @@ repetitions per point, median reported (`cpu_time`). `mallopt(M_MMAP_THRESHOLD, 
 is pinned in `main()` before any benchmark runs, disabling glibc's dynamic
 mmap-threshold escalation (see *Methodology note* at the bottom for why this matters).
 
-### 1 Thousand - 33 Million Elements
+### push_back throughput, `int`
+
+#### 1 Thousand - 33 Million Elements
 ![push_back throughput broad](benchmarks/results/results_broad_1k-33M.png)
 
-### 4 Million - 8 Million Elements
+#### 4 Million - 8 Million Elements
 ![push_back throughput fine](benchmarks/results/results_fine_4M-8M.png)
 
 **Findings.**
@@ -83,27 +97,64 @@ mmap-threshold escalation (see *Methodology note* at the bottom for why this mat
   pinned. *It does not shrink or invert with N*.
 
 **Clarification:** While I'd love to say that `mini::vector` runs faster because
-of an advanced algorithm that beats libstdc++, The main cause is that it 
-does less than `std::vector`: it is not allocator-aware, does not support 
+of an advanced algorithm that beats libstdc++, the main cause is that it
+does less than `std::vector`: it is not allocator-aware, does not support
 over-aligned types, and provides fewer guarantees on some paths. Whether you
 believe that's a justifiable cost in the name of speed is up to you.
 
-**Methodology note.** Earlier revisions of this benchmark showed `mini::vector`
-degrading sharply at a much smaller N than `std::vector` (a cliff at ~32K
-elements for `mini` vs ~4M for `std`). This turned out to not be a property of 
-either vector: glibc's `malloc` mmap threshold
-(default 128 KiB) escalates dynamically whenever an mmap'd chunk is freed, and
-since `mini::vector`'s benchmark runs first and sweeps up to 128 MB, it drags
-the threshold up on `std::vector`'s behalf before `std::vector`'s benchmark
-even starts, making `std` look artificially better at large N purely because
-it ran second. Pinning `M_MMAP_THRESHOLD` and disabling escalation
-(`M_MMAP_MAX = 0`) before any benchmark runs eliminates this; both
-vectors then show the same smooth, order-independent scaling curve.
+### push_back vs emplace_back, non-trivial types
 
-### Old Graph With *mmap* Interference
+`emplace_back` constructs an element in place from its constructor arguments,
+avoiding the temporary that `push_back(T{...})` must build and then move in. How
+much that saves depends entirely on the element type — specifically, on how
+expensive that avoided temporary is.
+
+#### `std::string` (cheap move, per-element heap allocation)
+![emplace vs push_back, string](benchmarks/results/results_string_1k-262k.png)
+
+`std::string`'s move is cheap (it steals a few pointers), and both paths pay the
+same per-element heap allocation for the character buffer, which dominates the
+cost. So `emplace_back` wins only marginally — a few percent — and `mini` and
+`std` are statistically indistinguishable on both operations. This is the
+common case for most real types, and the honest result is "it barely matters."
+
+#### `BigGuy` (256-byte inline payload, move ≡ copy, no heap)
+![emplace vs push_back, BigGuy](benchmarks/results/results_bigguy_1k-262k.png)
+
+`BigGuy` holds a `std::array<int, 64>` inline, so its (compiler-generated) move
+is really a full 256-byte copy, and there's no shared heap allocation to hide
+behind. This is the deliberate worst case for `push_back`: it does two 256-byte
+writes per element (build temporary, then copy it in) where `emplace_back` does
+one (construct in place). Even so, the gap is only ~5-8% at small N and
+compresses as the working set outgrows L3 and both become memory-bandwidth-bound.
+
+**Takeaway.** `emplace_back`'s performance benefit is not a general speedup; it
+ranges from *negligible* (cheap-move types) to surprisingly modest even in the worst 
+case (move ≡ copy types). Its real value is correctness and expressiveness:
+constructing in place from arguments, supporting move-only types, and avoiding a
+temporary when one would otherwise be forced. `mini` matches libstdc++ on both
+operations for both types.
+
+**Methodology note.** Earlier revisions of the `int` benchmark showed
+`mini::vector` degrading sharply at a much smaller N than `std::vector` (a cliff
+at ~32K elements for `mini` vs ~4M for `std`). This turned out to not be a
+property of either vector: glibc's `malloc` mmap threshold (default 128 KiB)
+escalates dynamically whenever an mmap'd chunk is freed, and since
+`mini::vector`'s benchmark runs first and sweeps up to 128 MB, it drags the
+threshold up on `std::vector`'s behalf before `std::vector`'s benchmark even
+starts, making `std` look artificially better at large N purely because it ran
+second. Pinning `M_MMAP_THRESHOLD` and disabling escalation (`M_MMAP_MAX = 0`)
+before any benchmark runs eliminates this; both vectors then show the same
+smooth, order-independent scaling curve.
+
+#### Old Graph With *mmap* Interference
 ![push_back throughput tainted](benchmarks/results/tainted_results_broad_1k-33M.png)
 
 Reproduce:
+
+    # one-time environment setup for stable measurements
+    sudo cpupower frequency-set -g performance
+    echo 1 | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo
 
     python3 -m venv .venv && source .venv/bin/activate
     pip install -r benchmarks/requirements.txt
@@ -111,12 +162,10 @@ Reproduce:
     cmake --build build-bench
     taskset -c 2 ./build-bench/vector_bench --benchmark_out=results.csv \
         --benchmark_out_format=csv --benchmark_repetitions=10
-    python benchmarks/plot.py
+    python benchmarks/plot.py <mode> results.csv   # mode: int | forwarding
 
 ## Limitations
 
 - Not `std::allocator`-aware; uses global `operator new`/`delete`, no support
   for over-aligned types.
 - `insert`/`erase` take an index rather than an iterator.
-- No `emplace_back` (though `construct` now forwards, so it's a small addition
-i'll add later).
