@@ -4,28 +4,36 @@
 #include <string>
 #include <malloc.h>
 
-// --- push_back, no reserve --------------------------------------------------
+// Test speed difference between emplace_back and push_back
+// Both cases get reserved upfront since growth allocation only interferes with results
+
+// push_back
 template <class Vec>
 static void BM_push_back(benchmark::State& state) {
     const int n = state.range(0);          // N comes from the range, not a constant
     for (auto _ : state) {                  // the framework decides how many reps
         Vec v;
-
-        for (int i = 0; i < n; ++i) v.push_back(i);
+        v.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            std::string s(30, 'a'); // avoiding SSO
+            v.push_back(std::move(s));
+        }
         benchmark::DoNotOptimize(v.data());
         benchmark::ClobberMemory();
     }
     state.SetItemsProcessed(state.iterations() * n);
 }
 
-// --- push_back, reserved ----------------------------------------------------
+// emplace_back
 template <class Vec>
-static void BM_push_back_reserved(benchmark::State& state) {
+static void BM_emplace_back(benchmark::State& state) {
     const int n = state.range(0);
     for (auto _ : state) {
         Vec v;
         v.reserve(n);
-        for (int i = 0; i < n; ++i) v.push_back(i);
+        for (int i = 0; i < n; ++i) {
+            v.emplace_back(30, 'a');
+        }
         benchmark::DoNotOptimize(v.data());
         benchmark::ClobberMemory();
     }
@@ -33,10 +41,10 @@ static void BM_push_back_reserved(benchmark::State& state) {
 }
 
 // Register each template instantiation across a range of N.
-BENCHMARK(BM_push_back<mini::vector<int>>)->RangeMultiplier(2)->Range(1<<10, 1<<25);
-BENCHMARK(BM_push_back<std::vector<int>>)->RangeMultiplier(2)->Range(1<<10, 1<<25);
-BENCHMARK(BM_push_back_reserved<mini::vector<int>>)->RangeMultiplier(2)->Range(1<<10, 1<<25);
-BENCHMARK(BM_push_back_reserved<std::vector<int>>)->RangeMultiplier(2)->Range(1<<10, 1<<25);
+BENCHMARK(BM_push_back<mini::vector<std::string>>)->RangeMultiplier(2)->Range(1<<10, 1<<18);
+BENCHMARK(BM_push_back<std::vector<std::string>>)->RangeMultiplier(2)->Range(1<<10, 1<<18);
+BENCHMARK(BM_emplace_back<mini::vector<std::string>>)->RangeMultiplier(2)->Range(1<<10, 1<<18);
+BENCHMARK(BM_emplace_back<std::vector<std::string>>)->RangeMultiplier(2)->Range(1<<10, 1<<18);
 
 int main(int argc, char** argv) {
     mallopt(M_MMAP_THRESHOLD, 1 << 26);
